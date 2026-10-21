@@ -1,0 +1,73 @@
+{
+  "name": "google-trends-scraper",
+  "version": "0.1.0",
+  "description": "Unofficial Google Trends scraper and Trending Now API for Node.js and TypeScript. Fetch trending searches by country without an API key or browser.",
+  "keywords": [
+    "google-trends",
+    "google-trends-api",
+    "google-trends-scraper",
+    "google-search-keywords",
+    "google-hot-keywords"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ccf-zeno/google-trends-scraper.git"
+  },
+  "license": "MIT",
+  "author": "ccfeng",
+  "sideEffects": false,
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/esm/index.d.ts",
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/index.d.cts",
+        "default": "./dist/cjs/index.cjs"
+      }
+    }
+  },
+  "types": "./dist/esm/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "dev": "rslib build --watch",
+    "build": "rslib build",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint",
+    "test": "tsx --test test/*.test.ts",
+    "test:package": "tsx scripts/check-package.ts",
+    "smoke": "pnpm build && tsx scripts/smoke.ts",
+    "verify": "pnpm lint && pnpm typecheck && pnpm test",
+    "check": "pnpm verify && pnpm build && pnpm test:package",
+    "prepare": "husky",
+    "prepack": "pnpm build && pnpm test:package",
+    "prepublishOnly": "pnpm verify"
+  },
+  "lint-staged": {
+    "{src,test,scripts}/**/*.{ts,js}": [
+      "oxlint --fix",
+      "prettier --write"
+    ]
+  },
+  "devDependencies": {
+    "@rslib/core": "^1.0.3",
+    "@types/node": "^22.13.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.6.0",
+    "oxlint": "^1.89.0",
+    "prettier": "^3.9.10",
+    "tsx": "^4.23.15",
+    "typescript": "~7.0.2"
+  },
+  "packageManager": "pnpm@11.20.0",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/"
+  }
+}

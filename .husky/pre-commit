@@ -1,0 +1,11 @@
+#!/usr/bin/env sh
+PATH="node_modules/.bin:$PATH"
+export PATH
+
+if ! command -v lint-staged >/dev/null 2>&1; then
+  echo "husky - 未找到 lint-staged，请先执行 pnpm install"
+  exit 1
+fi
+
+
+lint-staged
