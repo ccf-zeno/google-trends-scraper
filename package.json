@@ -1,6 +1,6 @@
 {
   "name": "google-trends-scraper",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Unofficial Google Trends scraper and Trending Now API for Node.js and TypeScript. Fetch trending searches by country without an API key or browser.",
   "keywords": [
     "google-trends",

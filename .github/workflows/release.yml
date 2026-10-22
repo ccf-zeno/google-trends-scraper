@@ -1,0 +1,80 @@
+name: Release
+
+# 发布走 npm 可信发布（OIDC），仓库里不保存 NPM_TOKEN。
+# 正式版：推送 v* tag 触发；预发布：手动触发并选择 dist-tag。
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      npm_tag:
+        description: 发布到哪个 dist-tag
+        required: true
+        default: demo
+        type: choice
+        options:
+          - demo
+          - next
+          - latest
+
+# 同一个 ref 不并发发布，避免版本互相覆盖
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write # 可信发布需要的 OIDC 令牌
+    env:
+      HUSKY: '0' # CI 不需要安装 git hooks
+    steps:
+      - uses: actions/checkout@v7
+
+      # 不用 actions/setup-node 的依赖缓存，避免缓存被污染后进入发布产物
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      # 不传 version，pnpm 版本由 package.json 的 packageManager 决定。
+      # 这里不用 pnpm/setup：它装的 Node 运行时不带 npm，而 scripts/check-package.ts 需要 npm
+      - uses: pnpm/action-setup@v6
+
+      - run: pnpm install --frozen-lockfile
+
+      # tag 必须等于 package.json 版本；预发布版本只能手动触发，避免把 latest 指向预发布
+      - name: 校验版本并确定 dist-tag
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_TAG: ${{ inputs.npm_tag }}
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            echo "NPM_TAG=$INPUT_TAG" >> "$GITHUB_ENV"
+            echo "手动发布 ${version}，dist-tag：${INPUT_TAG}"
+          else
+            tag="${GITHUB_REF_NAME#v}"
+            if [ "$tag" != "$version" ]; then
+              echo "::error::tag $GITHUB_REF_NAME 与 package.json 的 $version 不一致"
+              exit 1
+            fi
+            case "$version" in
+              *-*)
+                echo "::error::$version 是预发布版本，请用 Actions 手动触发并选择 demo 或 next"
+                exit 1
+                ;;
+            esac
+            echo "NPM_TAG=latest" >> "$GITHUB_ENV"
+            echo "tag 发布 ${version}，dist-tag：latest"
+          fi
+
+      # prepublishOnly 跑 lint、类型检查和测试，prepack 构建并校验 tarball，任一步失败都不会上传；
+      # tag 触发时是 detached HEAD，所以关掉 pnpm 的分支检查
+      - name: 发布
+        run: pnpm publish --no-git-checks --tag "$NPM_TAG"
