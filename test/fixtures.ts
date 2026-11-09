@@ -31,6 +31,13 @@ export function countryPayload(): unknown[] {
   ];
 }
 
-export function fixedFetch(payload: unknown, rpcId = 'i0OFE'): typeof globalThis.fetch {
-  return async () => new Response(rpcResponse(payload, rpcId));
+export function pageResponse(payload: unknown): string {
+  return `<html><head><style>body{color:black}</style></head><body>
+<script class="ds:1">AF_initDataCallback({key: 'ds:1', data:["Singapore"], sideChannel: {}});</script>
+<script nonce="fixture" class="ds:0">AF_initDataCallback({key: 'ds:0', hash: '2', data:${JSON.stringify(payload)}, sideChannel: {}});</script>
+</body></html>`;
+}
+
+export function fixedFetch(payload: unknown): typeof globalThis.fetch {
+  return async () => new Response(pageResponse(payload));
 }

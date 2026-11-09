@@ -1,7 +1,7 @@
 import { GoogleTrendsError, GoogleTrendsErrorCode } from '@/errors';
-import { requestRpc } from '@/http';
+import { requestRpc, requestTrendingPage } from '@/http';
 
-import { COUNTRIES_RPC_ID, SORT_KEYS, TRENDING_RPC_ID } from './constants';
+import { COUNTRIES_RPC_ID } from './constants';
 import { filterTrendingItems } from './filter';
 import { normalizeLocale, normalizeTrendingOptions } from './options';
 import { parseCountries, parseTrendingRows } from './parser';
@@ -12,18 +12,13 @@ import type {
   TrendingNowResult,
 } from './types';
 
-/** 调用网页内部接口；保留源站相关性排序，再做本地过滤和数量截取。 */
+/** 读取网页内联榜单；保留源站相关性顺序，再做本地过滤和数量截取。 */
 export async function fetchTrendingNow(
   options: TrendingNowOptions = {},
 ): Promise<TrendingNowResult> {
   const normalized = normalizeTrendingOptions(options);
   const { geo, hl, hours, category, sort, status, limit } = normalized;
-  const payload = await requestRpc(
-    TRENDING_RPC_ID,
-    [null, null, geo, category, hl, hours, SORT_KEYS[sort]],
-    hl,
-    options,
-  );
+  const payload = await requestTrendingPage(geo, hl, hours, options);
   const items = parseTrendingRows(payload, geo);
   const filtered = filterTrendingItems(items, normalized);
 

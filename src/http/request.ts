@@ -1,15 +1,58 @@
 import { GoogleTrendsError, GoogleTrendsErrorCode } from '@/errors';
 
 import { DEFAULT_TIMEOUT_MS, PAGE_URL, RPC_URL } from './constants';
-import { parseRpcResponse } from './parser';
+import { parseInitialData, parseRpcResponse } from './parser';
 import type { RequestOptions } from './types';
 
-/** 超时覆盖请求和响应体读取；不自动重试，避免放大源站限流。 */
 export async function requestRpc(
   rpcId: string,
   args: unknown[],
   hl: string,
   options: RequestOptions,
+): Promise<unknown> {
+  const query = new URLSearchParams({ rpcids: rpcId, 'source-path': '/trending', hl });
+  const body = new URLSearchParams({
+    'f.req': JSON.stringify([[[rpcId, JSON.stringify(args), null, 'generic']]]),
+  });
+  return request(
+    `${RPC_URL}?${query}`,
+    {
+      method: 'POST',
+      headers: {
+        accept: '*/*',
+        'content-type': 'application/x-www-form-urlencoded;charset=UTF-8',
+        'user-agent': 'Mozilla/5.0',
+        origin: 'https://trends.google.com',
+        referer: PAGE_URL,
+      },
+      body: body.toString(),
+    },
+    options,
+    async (response) => parseRpcResponse(await response.text(), rpcId),
+  );
+}
+
+export async function requestTrendingPage(
+  geo: string,
+  hl: string,
+  hours: number,
+  options: RequestOptions,
+): Promise<unknown> {
+  const query = new URLSearchParams({ geo, hl, hours: String(hours) });
+  return request(
+    `${PAGE_URL}?${query}`,
+    { method: 'GET', headers: { accept: 'text/html', 'user-agent': 'Mozilla/5.0' } },
+    options,
+    (response) => parseInitialData(response.body),
+  );
+}
+
+/** 超时覆盖请求和响应体读取；不自动重试，避免放大源站限流。 */
+async function request(
+  url: string,
+  init: RequestInit,
+  options: RequestOptions,
+  parse: (response: Response) => Promise<unknown>,
 ): Promise<unknown> {
   const fetchImpl = options.fetch === undefined ? globalThis.fetch : options.fetch;
   const timeoutMs =
@@ -32,24 +75,8 @@ export async function requestRpc(
     controller.abort(new Error('请求超时'));
   }, timeoutMs);
 
-  const query = new URLSearchParams({ rpcids: rpcId, 'source-path': '/trending', hl });
-  const body = new URLSearchParams({
-    'f.req': JSON.stringify([[[rpcId, JSON.stringify(args), null, 'generic']]]),
-  });
-
   try {
-    const response = await fetchImpl(`${RPC_URL}?${query}`, {
-      method: 'POST',
-      headers: {
-        accept: '*/*',
-        'content-type': 'application/x-www-form-urlencoded;charset=UTF-8',
-        'user-agent': 'Mozilla/5.0',
-        origin: 'https://trends.google.com',
-        referer: PAGE_URL,
-      },
-      body: body.toString(),
-      signal: controller.signal,
-    });
+    const response = await fetchImpl(url, { ...init, signal: controller.signal });
     if (!response.ok) {
       await response.body?.cancel().catch(() => undefined);
       const retryAfter = response.headers.get('retry-after');
@@ -59,9 +86,9 @@ export async function requestRpc(
         { status: response.status, ...(retryAfter === null ? {} : { retryAfter }) },
       );
     }
-    const text = await response.text();
+    const payload = await parse(response);
     if (controller.signal.aborted) throw controller.signal.reason;
-    return parseRpcResponse(text, rpcId);
+    return payload;
   } catch (cause) {
     if (options.signal?.aborted) throw abortedError(cause);
     if (timedOut) {

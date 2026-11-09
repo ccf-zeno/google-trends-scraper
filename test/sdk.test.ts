@@ -8,7 +8,13 @@ import {
   GoogleTrendsErrorCode,
 } from '../src';
 import type { TrendingNowOptions } from '../src';
-import { countryPayload, fixedFetch, makeRow, rpcResponse } from './fixtures';
+import {
+  countryPayload,
+  fixedFetch,
+  makeRow,
+  pageResponse,
+  rpcResponse,
+} from './fixtures';
 
 test('默认新加坡、过去24小时、前25条；不输出日志', async (t) => {
   const logger = mock.method(console, 'log', () => undefined);
@@ -18,18 +24,17 @@ test('默认新加坡、过去24小时、前25条；不输出日志', async (t) 
   const fetch: typeof globalThis.fetch = async (input, init) => {
     calls += 1;
     const url = new URL(String(input));
-    assert.equal(url.searchParams.get('rpcids'), 'i0OFE');
-    assert.equal(url.searchParams.get('hl'), 'en');
-    assert.equal(init?.method, 'POST');
-    const body = JSON.parse(
-      new URLSearchParams(String(init.body)).get('f.req') ?? 'null',
-    ) as unknown[][][];
-    const rpc = body[0]?.[0];
-    assert.ok(rpc);
-    assert.equal(rpc[0], 'i0OFE');
-    assert.deepEqual(JSON.parse(String(rpc[1])), [null, null, 'SG', 0, 'en', 24, 1]);
-    assert.equal(new Headers(init.headers).has('Cookie'), false);
-    return new Response(rpcResponse([null, rows]));
+    assert.equal(url.origin, 'https://trends.google.com');
+    assert.equal(url.pathname, '/trending');
+    assert.deepEqual(Object.fromEntries(url.searchParams), {
+      geo: 'SG',
+      hl: 'en',
+      hours: '24',
+    });
+    assert.equal(init?.method, 'GET');
+    assert.equal(init?.body, undefined);
+    assert.equal(new Headers(init?.headers).has('Cookie'), false);
+    return new Response(pageResponse([null, rows]));
   };
   const result = await fetchTrendingNow({ fetch });
   assert.equal(calls, 1);
@@ -56,14 +61,9 @@ test('支持大小写规范化、全部条目和零条截取', async () => {
 
 test('所有支持的时间窗口都会传给源站', async () => {
   for (const hours of [4, 24, 48, 168] as const) {
-    const fetch: typeof globalThis.fetch = async (_input, init) => {
-      const payload = JSON.parse(
-        new URLSearchParams(String(init?.body)).get('f.req') ?? 'null',
-      ) as string[][][];
-      const serialized = payload[0]?.[0]?.[1];
-      assert.ok(serialized);
-      assert.equal((JSON.parse(serialized) as unknown[])[5], hours);
-      return new Response(rpcResponse([null, []]));
+    const fetch: typeof globalThis.fetch = async (input) => {
+      assert.equal(new URL(String(input)).searchParams.get('hours'), String(hours));
+      return new Response(pageResponse([null, []]));
     };
     assert.equal((await fetchTrendingNow({ fetch, hours })).hours, hours);
   }
@@ -108,6 +108,30 @@ test('按搜索量、时间和标题排序后重新编号', async () => {
     title.items.map((item) => item.query),
     ['query 1', 'query 2', 'query 3'],
   );
+});
+
+test('排序并列时保留输入顺序，筛选与截取不改变趋势池总数', async () => {
+  const rows = [makeRow(3), makeRow(1), makeRow(2)];
+  for (const row of rows) row[6] = 100;
+  const fetch: typeof globalThis.fetch = async (input) => {
+    assert.deepEqual(
+      new Set(new URL(String(input)).searchParams.keys()),
+      new Set(['geo', 'hl', 'hours']),
+    );
+    return new Response(pageResponse([null, rows]));
+  };
+  const result = await fetchTrendingNow({
+    fetch,
+    category: 17,
+    status: 'active',
+    sort: 'volume',
+    limit: 1,
+  });
+  assert.equal(result.total, 3);
+  assert.equal(result.filteredTotal, 2);
+  assert.equal(result.items.length, 1);
+  assert.equal(result.items[0]?.query, 'query 3');
+  assert.equal(result.items[0]?.rawRank, 1);
 });
 
 test('无效参数在请求前失败', async () => {

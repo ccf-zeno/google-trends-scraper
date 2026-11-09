@@ -145,11 +145,11 @@ console.log(japan.items);
 
 ### Is this the official Google Trends API?
 
-No. It calls the internal RPC endpoint used by the Trending Now web page. No API key is required, but the endpoint makes no public compatibility guarantee.
+No. It reads the initial trend data embedded in the Trending Now page; country lists use an internal page RPC. No API key is required, and these data paths have no public compatibility guarantee.
 
 ### Is this a browser scraper or an HTTP client?
 
-It sends an HTTP POST and parses the structured response. No browser is opened and no page HTML is parsed.
+It sends HTTP requests and streams the page HTML to extract the embedded trend data. It does not open a browser or download referenced scripts and images. Filtering, sorting, and limiting happen locally; incomplete RSS data is never treated as a successful full trend result.
 
 ## Disclaimer
 

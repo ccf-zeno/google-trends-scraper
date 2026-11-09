@@ -1,9 +1,14 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { fetchTrendingNow, GoogleTrendsError, GoogleTrendsErrorCode } from '../src';
+import {
+  fetchCountries,
+  fetchTrendingNow,
+  GoogleTrendsError,
+  GoogleTrendsErrorCode,
+} from '../src';
 import type { TrendingNowOptions } from '../src';
-import { makeRow, rpcResponse } from './fixtures';
+import { makeRow, pageResponse } from './fixtures';
 
 function hasCode(code: GoogleTrendsErrorCode): (error: unknown) => boolean {
   return (error) => error instanceof GoogleTrendsError && error.code === code;
@@ -139,6 +144,46 @@ test('未注入请求实现时使用运行时原生fetch', async (t) => {
   t.after(() => {
     globalThis.fetch = original;
   });
-  globalThis.fetch = async () => new Response(rpcResponse([null, [makeRow()]]));
+  globalThis.fetch = async () => new Response(pageResponse([null, [makeRow()]]));
   assert.equal((await fetchTrendingNow()).items.length, 1);
+});
+
+test('响应体读取期间也能由调用方取消', async () => {
+  const controller = new AbortController();
+  const fetch: typeof globalThis.fetch = async (_input, init) =>
+    new Response(
+      new ReadableStream({
+        start(stream) {
+          init?.signal?.addEventListener(
+            'abort',
+            () => stream.error(init.signal?.reason),
+            { once: true },
+          );
+          queueMicrotask(() => controller.abort(new Error('取消读取')));
+        },
+      }),
+    );
+  await assert.rejects(
+    fetchTrendingNow({ fetch, signal: controller.signal }),
+    hasCode(GoogleTrendsErrorCode.Aborted),
+  );
+});
+
+test('国家RPC响应体仍受超时控制', async () => {
+  const fetch: typeof globalThis.fetch = async (_input, init) =>
+    new Response(
+      new ReadableStream({
+        start(controller) {
+          init?.signal?.addEventListener(
+            'abort',
+            () => controller.error(init.signal?.reason),
+            { once: true },
+          );
+        },
+      }),
+    );
+  await assert.rejects(
+    fetchCountries({ fetch, timeoutMs: 10 }),
+    hasCode(GoogleTrendsErrorCode.Timeout),
+  );
 });
